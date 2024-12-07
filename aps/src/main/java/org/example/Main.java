@@ -1,76 +1,105 @@
 package org.example;
 
-// Java program using label (swing)
-// to display the message “GFG WEB Site Click”
-import java.awt.*;
-import java.io.*;
-import java.util.HashMap;
 import javax.swing.*;
+import java.awt.*;
+import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-// Main class
-class Main {
+public class Main {
 
-    public static void createApp() {
-        // Create the main frame
-        JFrame frame = new JFrame("Dynamic Data Display");
+    public static void createApp(HashMap<Integer, Device> devices, HashMap<Integer, JTextField> deviceFields, RequestController requestController) {
+        JFrame frame = new JFrame("Мониторинг устройств");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(400, 300);
+        frame.setSize(500, 400);
 
-        // Create a panel with a grid layout (4 rows, 2 columns)
         JPanel panel = new JPanel();
-        panel.setLayout(new GridLayout(4, 2, 10, 10)); // 4 rows, 2 columns, with spacing
-
-        // Labels and text fields
-        JLabel label1 = new JLabel("Источник 1:");
-        JTextField field1 = new JTextField();
-        field1.setEditable(false); // Make it display-only
-
-        JLabel label2 = new JLabel("Источник 2:");
-        JTextField field2 = new JTextField();
-        field2.setEditable(false);
-
-        JLabel label3 = new JLabel("Источник 3:");
-        JTextField field3 = new JTextField();
-        field3.setEditable(false);
-
-        JLabel label4 = new JLabel("Источник 4:");
-        JTextField field4 = new JTextField();
-        field4.setEditable(false);
-
-        // Add components to the panel
-        panel.add(label1);
-        panel.add(field1);
-
-        panel.add(label2);
-        panel.add(field2);
-
-        panel.add(label3);
-        panel.add(field3);
-
-        panel.add(label4);
-        panel.add(field4);
-
-        // Add panel to the frame
+        panel.setLayout(new GridLayout(devices.size(), 2, 10, 10));
         frame.add(panel);
 
-        // Set frame visibility
-        frame.setVisible(true);
+        devices.forEach((id, device) -> {
+            JLabel label = new JLabel("Устройство #" + id);
+            JTextField field = new JTextField("Idle");
+            field.setEditable(false);
+            panel.add(label);
+            panel.add(field);
+            deviceFields.put(id, field);
+        });
 
-        // Simulate dynamic data update (example)
-        new Timer(1000, e -> {
-            field1.setText("Data 1: " + Math.random());
-            field2.setText("Data 2: " + Math.random());
-            field3.setText("Data 3: " + Math.random());
-            field4.setText("Data 4: " + Math.random());
-        }).start();
+        JButton nextRequestButton = new JButton("Следующая заявка");
+        nextRequestButton.setFont(new Font("Arial", Font.BOLD, 14));
+        nextRequestButton.setHorizontalAlignment(SwingConstants.CENTER);
+        frame.add(nextRequestButton, BorderLayout.SOUTH);
+
+        nextRequestButton.addActionListener(e -> {
+            for (Device device : devices.values()) {
+                if (device.isFree()) {
+                    Request request = requestController.getNextRequest();
+                    if (request != null) {
+                        new Thread(() -> {
+                            try {
+                                device.runDevice(request);
+                                JTextField field = deviceFields.get(device.getId());
+                                field.setText("Заявка №" + request.getId());
+                            } catch (InterruptedException ex) {
+                                Thread.currentThread().interrupt();
+                                System.err.println("Device#" + device.getId() + " was interrupted during processing.");
+                            }
+                        }).start();
+                        break;
+                    } else {
+                        System.out.println("No pending requests to process.");
+                    }
+                    break;
+                }
+            }
+        });
+
+
+        frame.setVisible(true);
     }
 
-    // Main driver method
-    public static void main(String[] args)
-    {
-//        createApp();
-        HashMap<Integer, Source> sourcesMap = new HashMap<>();
-        sourcesMap = Source.generateRandomNumberSources();
-        System.out.println(sourcesMap);
+    public static void main(String[] args) {
+        HashMap<Integer, Source> sources = Source.generateRandomNumberSources();
+        HashMap<Integer, Device> devices = new HashMap<>();
+        HashMap<Integer, JTextField> deviceFields = new HashMap<>();
+
+        for (int i = 1; i <= 4; i++) {
+            devices.put(i, new Device(i));
+        }
+
+        RequestController requestController = new RequestController();
+        sources.values().forEach(source -> source.getRequests().values().forEach(requestController::addRequest));
+
+        SwingUtilities.invokeLater(() -> createApp(devices, deviceFields, requestController));
+
+        ExecutorService executorService = Executors.newFixedThreadPool(devices.size());
+        devices.forEach((id, device) -> executorService.execute(() -> {
+            while (RequestController.hasRequsts()) {
+                Request request = requestController.getNextRequest();
+                if (request != null) {
+                    try {
+                        device.runDevice(request);
+
+                        SwingUtilities.invokeLater(() -> {
+                            JTextField field = deviceFields.get(id);
+                            field.setText("Заявка №" + request.getId());
+                        });
+
+                        Thread.sleep(500);
+                        SwingUtilities.invokeLater(() -> {
+                            JTextField field = deviceFields.get(id);
+                            field.setText("Idle");
+                        });
+
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        System.err.println("Device#" + id + " was interrupted.");
+                    }
+                }
+            }
+        }));
+
+        executorService.shutdown();
     }
 }
