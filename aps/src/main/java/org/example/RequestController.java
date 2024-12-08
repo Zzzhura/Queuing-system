@@ -1,4 +1,5 @@
 package org.example;
+import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class RequestController {
@@ -10,9 +11,5 @@ public class RequestController {
 
     public static Request getNextRequest(){
         return requestQueue.poll();
-    }
-
-    public static boolean hasRequsts(){
-        return !requestQueue.isEmpty();
     }
 }

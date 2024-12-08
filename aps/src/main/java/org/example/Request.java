@@ -8,7 +8,7 @@ public class Request {
     public Request(Integer requestId, Integer sourceId) {
         this.sourceId = sourceId;
         this.id = requestId;
-        this.timeToHandleRequest = (int) (Math.random() * 50);
+        this.timeToHandleRequest = (int) (Math.random() * 1000);
     }
 
     public Integer getId() {

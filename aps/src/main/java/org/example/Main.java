@@ -3,24 +3,21 @@ package org.example;
 import javax.swing.*;
 import java.awt.*;
 import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 
 public class Main {
 
     static class TimeBar extends JPanel {
-        private int length = 0; // Length of the time bar
+        private int length = 0;
 
         public void setLength(int length) {
             this.length = length;
-            repaint(); // Repaint the panel to update the length
+            repaint();
         }
 
         @Override
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
-            g.setColor(Color.BLUE);
+            g.setColor(Color.GREEN);
             g.fillRect(0, 0, length, getHeight());
         }
     }
@@ -34,7 +31,6 @@ public class Main {
         panel.setLayout(new GridLayout(devices.size(), 3, 10, 10));
         frame.add(panel);
 
-        // Create and add components for each device
         devices.forEach((id, device) -> {
             JLabel label = new JLabel("Устройство #" + id);
             JTextField field = new JTextField("Idle");
@@ -52,47 +48,34 @@ public class Main {
             timeBars.put(id, timeBar);
         });
 
-        // Create a button to simulate the arrival of requests
         JButton nextRequestButton = new JButton("Следующая заявка");
         nextRequestButton.setFont(new Font("Arial", Font.BOLD, 14));
         nextRequestButton.setHorizontalAlignment(SwingConstants.CENTER);
         frame.add(nextRequestButton, BorderLayout.SOUTH);
 
-        ExecutorService executorService = Executors.newFixedThreadPool(devices.size());
-        LinkedBlockingQueue<Request> requestQueue = new LinkedBlockingQueue<>();
+        // Создаем RequestBuffer с передачей устройств
+        RequestBuffer requestBuffer = new RequestBuffer(devices);
 
-        // Start a thread for each device
-        for (Device device : devices.values()) {
-            executorService.submit(() -> {
-                while (true) {
-                    try {
-                        Request request = requestQueue.take(); // Wait for a new request
-                        if (device.isFree()) {
-                            processRequest(device, request, deviceFields, timeBars);
-                        } else {
-                            requestQueue.put(request); // If device is busy, put the request back
-                        }
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        System.err.println("Device #" + device.getId() + " interrupted.");
-                        break;
-                    }
-                }
-            });
-        }
-
-        // Button action to add a new request to the queue
+        // Назначаем обработчик для кнопки
         nextRequestButton.addActionListener(e -> {
             System.out.println("Button clicked! New request added to queue.");
             Request request = requestController.getNextRequest();
             if (request != null) {
-                try {
-                    requestQueue.put(request); // Add the new request to the queue
-                    System.out.println("Request " + request.getId() + " added to the queue.");
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    System.err.println("Failed to add request to the queue.");
+                // Найти свободное устройство и передать запрос
+                for (Device device : devices.values()) {
+                    if (device.isFree()) {
+                        new Thread(() -> {
+                            try {
+                                processRequest(device, request, deviceFields, timeBars);
+                            } catch (InterruptedException ex) {
+                                System.err.println("Error processing request: " + ex.getMessage());
+                            }
+                        }).start();
+                        System.out.println("Request " + request.getId() + " sent to Device #" + device.getId());
+                        return;
+                    }
                 }
+                System.out.println("No free devices available to handle request.");
             } else {
                 System.out.println("No request to process.");
             }
@@ -101,29 +84,41 @@ public class Main {
         SwingUtilities.invokeLater(() -> frame.setVisible(true));
     }
 
-    private static void processRequest(Device device, Request request, HashMap<Integer, JTextField> deviceFields, HashMap<Integer, TimeBar> timeBars) {
+    private static void processRequest(Device device, Request request, HashMap<Integer, JTextField> deviceFields, HashMap<Integer, TimeBar> timeBars) throws InterruptedException {
         System.out.println("Processing request " + request.getId() + " on Device #" + device.getId());
 
         try {
             long startTime = System.currentTimeMillis();
-            device.runDevice(request);
+            device.runDevice(request); // Выполнение запроса (симуляция работы)
             long endTime = System.currentTimeMillis();
             int processingTime = (int) (endTime - startTime);
 
             SwingUtilities.invokeLater(() -> {
+                // Обновление TimeBar и JTextField
                 TimeBar timeBar = timeBars.get(device.getId());
-                timeBar.setLength(processingTime);
+                if (timeBar != null) {
+                    timeBar.setLength(processingTime);
+                }
 
                 JTextField field = deviceFields.get(device.getId());
-                field.setText("Заявка №" + request.getId());
+                if (field != null) {
+                    field.setText("Заявка №" + request.getId());
+                }
             });
 
-            Thread.sleep(500); // Simulate idle time after processing
+            Thread.sleep(2000); // Пауза для демонстрации обработки
+
             SwingUtilities.invokeLater(() -> {
+                // Сброс состояния TimeBar и JTextField после обработки
                 JTextField field = deviceFields.get(device.getId());
-                field.setText("Idle");
+                if (field != null) {
+                    field.setText("Idle");
+                }
+
                 TimeBar timeBar = timeBars.get(device.getId());
-                timeBar.setLength(0);
+                if (timeBar != null) {
+                    timeBar.setLength(0);
+                }
             });
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -132,15 +127,10 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        // Generate sources and requests
         HashMap<Integer, Source> sources = Source.generateRandomNumberSources();
-        HashMap<Integer, Device> devices = new HashMap<>();
+        HashMap<Integer, Device> devices = Device.createDevices(4); // Создание и запуск устройств
         HashMap<Integer, JTextField> deviceFields = new HashMap<>();
         HashMap<Integer, TimeBar> timeBars = new HashMap<>();
-
-        for (int i = 1; i <= 4; i++) {
-            devices.put(i, new Device(i));
-        }
 
         RequestController requestController = new RequestController();
         sources.values().forEach(source -> source.getRequests().values().forEach(requestController::addRequest));
