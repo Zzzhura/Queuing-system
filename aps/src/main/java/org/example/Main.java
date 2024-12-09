@@ -22,7 +22,7 @@ public class Main {
         }
     }
 
-    public static void createApp(HashMap<Integer, Device> devices, HashMap<Integer, JTextField> deviceFields, RequestController requestController, HashMap<Integer, TimeBar> timeBars) {
+    public static void createApp(HashMap<Integer, Device> devices, HashMap<Integer, JTextField> deviceFields, RequestController requestController, HashMap<Integer, TimeBar> timeBars, DeviceChart deviceChart) {
         JFrame frame = new JFrame("Мониторинг устройств");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(800, 600);
@@ -66,7 +66,7 @@ public class Main {
                     if (device.isFree()) {
                         new Thread(() -> {
                             try {
-                                processRequest(device, request, deviceFields, timeBars);
+                                processRequest(device, request, deviceFields, timeBars, deviceChart);
                             } catch (InterruptedException ex) {
                                 System.err.println("Error processing request: " + ex.getMessage());
                             }
@@ -84,12 +84,13 @@ public class Main {
         SwingUtilities.invokeLater(() -> frame.setVisible(true));
     }
 
-    private static void processRequest(Device device, Request request, HashMap<Integer, JTextField> deviceFields, HashMap<Integer, TimeBar> timeBars) throws InterruptedException {
+    private static void processRequest(Device device, Request request, HashMap<Integer, JTextField> deviceFields, HashMap<Integer, TimeBar> timeBars, DeviceChart deviceChart) throws InterruptedException {
         System.out.println("Processing request " + request.getId() + " on Device #" + device.getId());
 
         try {
             long startTime = System.currentTimeMillis();
             device.runDevice(request); // Выполнение запроса (симуляция работы)
+            deviceChart.updateDeviceState(device.getId(), startTime, request.getTimeToHandleRequest()); // Обновляем график
             long endTime = System.currentTimeMillis();
             int processingTime = (int) (endTime - startTime);
 
@@ -132,9 +133,12 @@ public class Main {
         HashMap<Integer, JTextField> deviceFields = new HashMap<>();
         HashMap<Integer, TimeBar> timeBars = new HashMap<>();
 
+        DeviceChart deviceChart = new DeviceChart(devices);
+        deviceChart.showChart(); // Показываем график
+
         RequestController requestController = new RequestController();
         sources.values().forEach(source -> source.getRequests().values().forEach(requestController::addRequest));
 
-        SwingUtilities.invokeLater(() -> createApp(devices, deviceFields, requestController, timeBars));
+        SwingUtilities.invokeLater(() -> createApp(devices, deviceFields, requestController, timeBars, deviceChart));
     }
 }
